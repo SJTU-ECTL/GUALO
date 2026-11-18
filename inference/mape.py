@@ -27,8 +27,8 @@ GROUPS = {
 def arguments(default_group):
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=Path, default=ROOT / 'datasets' / 'opencores')
-    parser.add_argument('--area-checkpoint', type=Path, required=True)
-    parser.add_argument('--delay-checkpoint', type=Path, required=True)
+    parser.add_argument('--area-checkpoint', type=Path)
+    parser.add_argument('--delay-checkpoint', type=Path)
     parser.add_argument('--group', choices=['mape', 'ranking', 'all'], default=default_group)
     parser.add_argument('--designs', nargs='+', help='Circuit names; overrides --group.')
     parser.add_argument('--mc-samples', type=int, default=30, help='Dropout passes; 0 disables dropout.')
@@ -66,6 +66,9 @@ def evaluate(args, metric):
     checkpoints = {}
     for target in ['area', 'delay']:
         path = getattr(args, target + '_checkpoint')
+        if path is None:
+            from huggingface_hub import hf_hub_download
+            path = Path(hf_hub_download(repo_id='Alex959/GUALO', filename=target + '_demo.pt'))
         checkpoint = torch.load(path, map_location='cpu', weights_only=True)
         if checkpoint.get('model_version') != MODEL_VERSION:
             raise ValueError(f'{target}: incompatible model version')

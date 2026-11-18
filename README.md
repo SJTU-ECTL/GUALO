@@ -27,11 +27,9 @@ A major limitation of current QoR prediction tasks is the lack of training data,
 
 ## Inference
 
-The OpenCores dataset contains 23 circuits with 1,500 recipes each.
+Run MAPE and ranking with weights from [Alex959/GUALO](https://huggingface.co/Alex959/GUALO).
 
 ```bash
-python inference/mape.py --area-checkpoint AREA.pt --delay-checkpoint DELAY.pt
-python inference/ranking.py --area-checkpoint AREA.pt --delay-checkpoint DELAY.pt
+python inference/mape.py
+python inference/ranking.py
 ```
-
-Defaults: 9 circuits for MAPE, 14 for ranking, and 30 MC-dropout passes. Use `--group all` for all 23 circuits, `--designs i2c spi` to select circuits, or `--output results.csv` to save metrics.

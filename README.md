@@ -14,24 +14,18 @@ Use [AI4EDA Toolkit](https://github.com/959AI994/AI4EDA-OpenABC-Data-Toolkit#syn
 {"format_version": "gualo-tensors-v1", "circuits": [{"id": "design", "file": "design.pt"}]}
 ```
 
-## Training
-
-```bash
-python train.py --data /path/to/data --target area --output runs/area --epochs 300
-python train.py --data /path/to/data --target delay --output runs/delay --epochs 300
-```
-
 ## Inference
 
-Run MAPE and ranking with weights(test_demo_ckpt) from [GUALO_test_demo_ckpt](https://huggingface.co/Alex959/GUALO).
+Download [GUALO_test_demo.pt](https://huggingface.co/Alex959/GUALO/resolve/main/GUALO_test_demo.pt) and place it in the repository root. Run MAPE, ranking, and UQ on the supplied OpenCores data:
 
 ```bash
 python inference/mape.py
 python inference/ranking.py
+python inference/uq.py
 ```
+
+Or run all three with `python inference/evaluate.py`. Results are saved in `results/`.
 
 ## Tips
 
 A major limitation of current QoR prediction tasks is the lack of training data, especially the small number of distinct circuits. Expanding the training dataset to include more circuits and synthesis recipes can improve prediction accuracy and generalization to unseen circuits and recipes. Use the [AI4EDA Toolkit](https://github.com/959AI994/AI4EDA-OpenABC-Data-Toolkit#synthesis-recipe-generation) to generate additional training data.
-
-

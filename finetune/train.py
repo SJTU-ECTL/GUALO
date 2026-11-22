@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -9,7 +8,8 @@ import shutil
 import torch
 import torch.nn.functional as F
 
-from checkpointing import atomic_json, sha
+from checkpointing import atomic_json
+from integrity import digest, file_checksum, stable_seed
 from data import CircuitDataset, graph_on_device, trim
 from finetune.objectives import pairwise_loss, uncertainty_loss
 from losses import nll_loss
@@ -35,8 +35,7 @@ def load_data(args, checkpoint):
         groups = {key: [] for key in ('select', 'calibrate', 'uq_validation')}
         for index in item['splits']['validation'].tolist():
             tokens = item['seq'][index]
-            value = int.from_bytes(hashlib.sha256(bytes(tokens[tokens.ne(0)].tolist())
-                                   + f':{seed}'.encode()).digest()[:8], 'big') % 1000
+            value = stable_seed(bytes(tokens[tokens.ne(0)].tolist()) + f':{seed}'.encode(), 1000)
             key = 'select' if value < 850 else 'calibrate' if value < 875 else 'uq_validation'
             groups[key].append(index)
         item['splits'].update({key: torch.tensor(rows, dtype=torch.long) for key, rows in groups.items()})
@@ -49,7 +48,7 @@ def load_data(args, checkpoint):
     metadata = dict(source_fingerprint=dataset.fingerprint, partition_seed=seed, circuits=records,
                     buckets=dict(train=[0, 800], select=[800, 850], calibrate=[850, 875],
                                  uq_validation=[875, 900], test_excluded=[900, 1000]))
-    fingerprint = hashlib.sha256(json.dumps(metadata, sort_keys=True).encode()).hexdigest()
+    fingerprint = digest(json.dumps(metadata, sort_keys=True).encode())
     return dataset.items, metadata, fingerprint
 
 
@@ -212,9 +211,9 @@ def main(argv=None):
     torch.set_num_threads(args.threads)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
-    original_hash = sha(args.checkpoint)
+    original_checksum = file_checksum(args.checkpoint)
     checkpoint = torch.load(args.checkpoint, map_location='cpu', weights_only=True)
-    if sha(args.checkpoint) != original_hash:
+    if file_checksum(args.checkpoint) != original_checksum:
         raise RuntimeError('Source checkpoint changed while loading')
     if checkpoint.get('model_version') != MODEL_VERSION:
         raise ValueError('Checkpoint must match the current GUALO model version')
@@ -227,7 +226,7 @@ def main(argv=None):
     optimizer = torch.optim.Adam(parameters, lr=args.lr)
     args.output.mkdir(parents=True, exist_ok=False)
     shutil.copyfile(args.checkpoint, args.output / 'initial.pt')
-    if sha(args.output / 'initial.pt') != original_hash or sha(args.checkpoint) != original_hash:
+    if file_checksum(args.output / 'initial.pt') != original_checksum or file_checksum(args.checkpoint) != original_checksum:
         raise RuntimeError('Source checkpoint changed while copying')
     initial = torch.load(args.output / 'initial.pt', map_location='cpu', weights_only=True)
     model.load_state_dict(initial['model_state_dict'], strict=True)
@@ -237,7 +236,7 @@ def main(argv=None):
             for item in items:
                 item['embedding'] = model.gnn(graph_on_device(item, device)).detach().cpu()
     settings = {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()}
-    config = dict(settings=settings, parent_sha256=original_hash, dataset_fingerprint=fingerprint,
+    config = dict(settings=settings, parent_checksum=original_checksum, dataset_fingerprint=fingerprint,
                   data=metadata, training_split='calibrate' if args.task == 'uq' else 'train',
                   selection_split='uq_validation' if args.task == 'uq' else 'select', test_used=False)
     atomic_json(args.output / 'config.json', config)
@@ -315,12 +314,12 @@ def main(argv=None):
             if not torch.equal(actual[0] if key in variance_keys else actual,
                                original[0] if key in variance_keys else original):
                 raise RuntimeError(f'UQ fine-tuning changed a protected parameter: {key}')
-    if sha(args.checkpoint) != original_hash:
+    if file_checksum(args.checkpoint) != original_checksum:
         raise RuntimeError('Original checkpoint was modified externally')
     for hook in hooks:
         hook.remove()
     result = dict(phase='complete', task=args.task, epochs=args.epochs, best_epoch=best_epoch,
-                  initial_sha256=original_hash, test_used=False)
+                  initial_checksum=original_checksum, test_used=False)
     atomic_json(args.output / 'status.json', result)
     return result
 

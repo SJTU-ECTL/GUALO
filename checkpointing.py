@@ -1,10 +1,11 @@
-import hashlib
 import json
 import math
 import os
 from pathlib import Path
 import re
 import shutil
+
+from integrity import LEGACY_CHECKSUM, file_checksum
 
 POLICY_VERSION = 'validation-multi-objective-v1'
 RULES = {
@@ -13,13 +14,6 @@ RULES = {
     'rank': ('max', 'Macro per-circuit Spearman correlation; larger is better.'),
     'uq': ('max', 'Macro uncertainty/error Spearman on the fixed MC validation subset.'),
 }
-
-
-def sha(path):
-    h = hashlib.sha256()
-    with Path(path).open('rb') as f:
-        for data in iter(lambda: f.read(4*1024*1024), b''): h.update(data)
-    return h.hexdigest()
 
 
 def atomic_json(path, data):
@@ -56,7 +50,9 @@ class CheckpointRetention:
 
             for key, record in self.state['best'].items():
                 source = self.out/record['file']
-                if sha(source) != record['sha256']: raise ValueError('Retained checkpoint was modified')
+                legacy = 'checksum' not in record
+                expected = record[LEGACY_CHECKSUM if legacy else 'checksum']
+                if file_checksum(source, legacy=legacy) != expected: raise ValueError('Retained checkpoint was modified')
                 atomic_alias(source, self.out/f'best_{key}.pt')
         else:
             if any((self.out/f'best_{key}.pt').exists() for key in RULES):
@@ -90,10 +86,10 @@ class CheckpointRetention:
             saved=dict(payload,retention=dict(policy_version=POLICY_VERSION,context=self.context,**record))
             tmp=destination.with_suffix('.pt.tmp')
             self.writer(tmp,saved);tmp.replace(destination);destination.chmod(0o444)
-            record.update(file=str(destination.relative_to(self.out)),sha256=sha(destination))
+            record.update(file=str(destination.relative_to(self.out)),checksum=file_checksum(destination))
             self.state['retained'].append(dict(record))
             for name in improved:
-                self.state['best'][name]=dict(epoch=epoch,tag=tag,value=valid[name],file=record['file'],sha256=record['sha256'])
+                self.state['best'][name]=dict(epoch=epoch,tag=tag,value=valid[name],file=record['file'],checksum=record['checksum'])
         self.state['evaluations'].append(record)
         atomic_json(self.path,self.state)
         for name in improved:atomic_alias(self.out/record['file'],self.out/f'best_{name}.pt')

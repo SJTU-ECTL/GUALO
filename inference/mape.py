@@ -1,7 +1,6 @@
 import argparse
 import csv
 import gc
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -13,6 +12,7 @@ from torch_geometric.data import Data
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from model import GUALO, MODEL_VERSION, enable_dropout
+from integrity import stable_seed
 
 
 GROUPS = {
@@ -108,7 +108,7 @@ def evaluate(args, metric):
                 embedding = model.gnn(graph)
                 if args.mc_samples:
                     enable_dropout(model)
-                seed = int.from_bytes(hashlib.sha256(f'{args.seed}:{target}:{did}'.encode()).digest()[:8], 'big') % (2**31)
+                seed = stable_seed(f'{args.seed}:{target}:{did}'.encode(), 2**31)
                 devices = [device.index if device.index is not None else torch.cuda.current_device()] if device.type == 'cuda' else []
                 outputs = []
                 with torch.random.fork_rng(devices=devices):

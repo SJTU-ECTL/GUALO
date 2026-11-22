@@ -7,7 +7,8 @@ import time
 
 import torch
 
-from checkpointing import CheckpointRetention, atomic_json, sha
+from checkpointing import CheckpointRetention, atomic_json
+from integrity import file_checksum
 from data import CircuitDataset, graph_on_device, trim
 from losses import joint_loss, nll_loss
 from model import GUALO, MODEL_VERSION, enable_dropout
@@ -156,7 +157,7 @@ def main(argv=None):
         checkpoint = torch.load(args.resume,map_location='cpu',weights_only=True)
         if checkpoint.get('model_version') != MODEL_VERSION or checkpoint.get('training_version') != TRAINING_VERSION:
             raise ValueError('Checkpoint is not from this public training implementation')
-        if checkpoint['dataset_fingerprint'] != dataset.fingerprint or checkpoint['settings'] != settings or checkpoint['model_config'] != model_config:
+        if not dataset.matches_fingerprint(checkpoint['dataset_fingerprint']) or checkpoint['settings'] != settings or checkpoint['model_config'] != model_config:
             raise ValueError('Resume requires identical dataset, target and training settings')
         start_epoch,step = checkpoint['epoch']+1,checkpoint['step']
         if start_epoch > args.epochs:
@@ -168,13 +169,13 @@ def main(argv=None):
         random.setstate(checkpoint['rng_python'])
         if cuda_devices and checkpoint['rng_cuda'] is not None:
             torch.cuda.set_rng_state(checkpoint['rng_cuda'],device)
-        parent = dict(file=str(args.resume.resolve()),sha256=sha(args.resume))
+        parent = dict(file=str(args.resume.resolve()),checksum=file_checksum(args.resume))
     args.output.mkdir(parents=True,exist_ok=False)
     source_root = Path(__file__).resolve().parent
-    source_files = [source_root/n for n in ('train.py','data.py','losses.py','checkpointing.py')] + sorted((source_root/'model').glob('*.py'))
+    source_files = [source_root/n for n in ('train.py','data.py','losses.py','checkpointing.py','integrity.py')] + sorted((source_root/'model').glob('*.py'))
     config = dict(model_version=MODEL_VERSION,training_version=TRAINING_VERSION,model_config=model_config,
                   settings=settings,epochs=args.epochs,device=str(device),dataset_fingerprint=dataset.fingerprint,
-                  parent=parent,source_sha256={str(p.relative_to(source_root)):sha(p) for p in source_files})
+                  parent=parent,source_checksums={str(p.relative_to(source_root)):file_checksum(p) for p in source_files})
     atomic_json(args.output/'config.json',config)
     atomic_json(args.output/'dataset.json',dataset.metadata)
     retention = CheckpointRetention(args.output,dict(target=args.target,split='validation',

@@ -1,21 +1,13 @@
-import hashlib
 import json
 from pathlib import Path
 
 import torch
 from torch_geometric.data import Data
-
-
-def file_hash(path):
-    digest = hashlib.sha256()
-    with Path(path).open('rb') as stream:
-        for chunk in iter(lambda: stream.read(4 * 1024 * 1024), b''):
-            digest.update(chunk)
-    return digest.hexdigest()
+from integrity import LEGACY_CHECKSUM, digest, file_checksum, stable_digest, stable_seed
 
 
 def recipe_partition(tokens, seed=42):
-    value = int.from_bytes(hashlib.sha256(bytes(tokens) + f':{seed}'.encode()).digest()[:8], 'big') % 1000
+    value = stable_seed(bytes(tokens) + f':{seed}'.encode(), 1000)
     return 'train' if value < 800 else 'validation' if value < 900 else 'test'
 
 
@@ -23,6 +15,7 @@ class CircuitDataset:
 
     def __init__(self, directory, target, seed=42):
         root = Path(directory).resolve()
+        self.root = root
         manifest = json.loads((root / 'manifest.json').read_text())
         if manifest.get('format_version') != 'gualo-tensors-v1':
             raise ValueError('Expected a gualo-tensors-v1 manifest')
@@ -68,13 +61,26 @@ class CircuitDataset:
                 std = 1.0
             self.items.append(dict(id=name, x=x.long(), edge_index=edges.long(), seq=seq.long(),
                                    raw=raw, y=(raw - mean) / std, mean=mean, std=std, splits=groups))
-            records.append(dict(id=name, file=spec['file'], sha256=file_hash(path), mean=mean, std=std,
+            records.append(dict(id=name, file=spec['file'], checksum=file_checksum(path), mean=mean, std=std,
                                 split_indices={key: rows.tolist() for key, rows in groups.items()}))
         if not self.items:
             raise ValueError('Dataset contains no circuits')
         self.metadata = dict(format_version=manifest['format_version'], target=target, seed=seed,
-                             split='global recipe SHA256 80/10/10; known circuits', circuits=records)
-        self.fingerprint = hashlib.sha256(json.dumps(self.metadata, sort_keys=True).encode()).hexdigest()
+                             split='global recipe 80/10/10; known circuits', circuits=records)
+        self.fingerprint = digest(json.dumps(self.metadata, sort_keys=True).encode())
+
+    def matches_fingerprint(self, value):
+        if value == self.fingerprint:
+            return True
+        records = []
+        for record in self.metadata['circuits']:
+            record = dict(record)
+            record.pop('checksum')
+            record[LEGACY_CHECKSUM] = file_checksum(self.root / record['file'], legacy=True)
+            records.append(record)
+        metadata = dict(self.metadata, circuits=records,
+                        split=f'global recipe {LEGACY_CHECKSUM.upper()} 80/10/10; known circuits')
+        return stable_digest(json.dumps(metadata, sort_keys=True).encode()).hex() == value
 
 
 def graph_on_device(item, device):

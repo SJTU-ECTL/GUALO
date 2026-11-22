@@ -8,7 +8,7 @@ from .gnn_crosstr import TR, SynthesisTransformerEncoder
 
 LOG_VAR_MIN = -10.0
 LOG_VAR_MAX = 10.0
-MODEL_VERSION = "gualo-v3-prefusion-20261117"
+MODEL_VERSION = "gualo-v1"
 
 
 def enable_dropout(model):

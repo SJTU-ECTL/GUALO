@@ -46,3 +46,13 @@
 !/inference/metrics.py
 !/inference/uq.py
 !/inference/uq_indices.json
+
+!/agent/
+!/agent/README.md
+!/agent/requirements.txt
+!/agent/run.py
+!/agent/common.py
+!/agent/abc_runner.py
+!/agent/nsga2.py
+!/agent/search.py
+!/agent/plot.py

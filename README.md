@@ -26,7 +26,7 @@ python inference/uq.py
 
 Or run all three with `python inference/evaluate.py`. Results are saved in `results/`.
 
-# GUALO-LCB DSE Agent
+## GUALO-LCB DSE Agent
 
 ```bash
 pip install -r agent/requirements.txt
